@@ -103,6 +103,12 @@ def get_model_status():
     return "idle"
 
 
+def get_model_error_message():
+    if _load_error is None:
+        return None
+    return str(_load_error)
+
+
 def start_model_warmup():
     global _warmup_started
 

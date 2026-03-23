@@ -1,18 +1,37 @@
 from flask import Flask, request, jsonify
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 import io
 import os
-from model import get_model_status, start_model_warmup
+from model import get_model_error_message, get_model_status, start_model_warmup
 from prediction import predict_image
 
 app = Flask(__name__)
 start_model_warmup()
 
 
+def _build_health_response():
+    model_status = get_model_status()
+    response = {"model_status": model_status}
+
+    if model_status == "ready":
+        response["status"] = "ok"
+        return response, 200
+
+    if model_status == "error":
+        response["status"] = "error"
+        model_error = get_model_error_message()
+        if model_error:
+            response["model_error"] = model_error
+        return response, 503
+
+    response["status"] = "starting"
+    return response, 200
+
+
 @app.route("/health", methods=["GET"])
 def health():
-    model_status = get_model_status()
-    return {"status": "ok", "model_status": model_status}
+    response, status_code = _build_health_response()
+    return jsonify(response), status_code
 
 
 @app.route("/predict", methods=["POST"])
@@ -21,20 +40,32 @@ def predict():
         return jsonify({"error": "No image provided"}), 400
 
     file = request.files["image"]
-    image = Image.open(io.BytesIO(file.read())).convert("RGB")
+    if not file.filename:
+        return jsonify({"error": "Image filename is empty"}), 400
+
+    image_bytes = file.read()
+    if not image_bytes:
+        return jsonify({"error": "Image file is empty"}), 400
+
+    try:
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except UnidentifiedImageError:
+        return jsonify({"error": "Invalid image file"}), 400
 
     try:
         result = predict_image(image)
     except Exception:
-        return (
-            jsonify(
-                {
-                    "error": "Model failed to load",
-                    "model_status": get_model_status(),
-                }
-            ),
-            500,
-        )
+        model_status = get_model_status()
+        if model_status != "ready":
+            response = {
+                "error": "Model unavailable",
+                "model_status": model_status,
+            }
+            model_error = get_model_error_message()
+            if model_error:
+                response["model_error"] = model_error
+            return jsonify(response), 503
+        return jsonify({"error": "Prediction failed"}), 500
 
     return jsonify(result)
 
