@@ -9,6 +9,14 @@ app = Flask(__name__)
 start_model_warmup()
 
 
+def _build_liveness_response():
+    return {
+        "status": "ok",
+        "service": "plant-disease-api",
+        "model_status": get_model_status(),
+    }
+
+
 def _build_health_response():
     model_status = get_model_status()
     response = {"model_status": model_status}
@@ -26,6 +34,11 @@ def _build_health_response():
 
     response["status"] = "starting"
     return response, 200
+
+
+@app.route("/", methods=["GET"])
+def index():
+    return jsonify(_build_liveness_response()), 200
 
 
 @app.route("/health", methods=["GET"])
