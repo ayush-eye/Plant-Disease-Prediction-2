@@ -2,11 +2,10 @@ from flask import Flask, request, jsonify
 from PIL import Image, UnidentifiedImageError
 import io
 import os
-from model import get_model_error_message, get_model_status, start_model_warmup
+from model import get_model_error_message, get_model_status
 from prediction import predict_image
 
 app = Flask(__name__)
-start_model_warmup()
 
 
 def _build_liveness_response():

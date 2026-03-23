@@ -1,14 +1,15 @@
 from pathlib import Path
+import logging
 import threading
 
 MODEL_PATH = Path(__file__).with_name("my_model4.tflite")
+logger = logging.getLogger(__name__)
 
 _interpreter = None
 _input_details = None
 _output_details = None
 _load_error = None
 _load_lock = threading.Lock()
-_warmup_started = False
 
 CLASS_MAPPING = {
     0: "Apple scab",
@@ -68,6 +69,9 @@ def _load_model_once():
             raise _load_error
 
         try:
+            if not MODEL_PATH.exists():
+                raise FileNotFoundError(f"Model file not found: {MODEL_PATH}")
+
             try:
                 from tflite_runtime.interpreter import Interpreter
             except ImportError:
@@ -82,6 +86,7 @@ def _load_model_once():
             return _interpreter, _input_details, _output_details
         except Exception as exc:
             _load_error = exc
+            logger.exception("Failed to initialize TFLite model from %s", MODEL_PATH)
             raise
 
 
@@ -98,8 +103,6 @@ def get_model_status():
         return "ready"
     if _load_error is not None:
         return "error"
-    if _warmup_started:
-        return "loading"
     return "idle"
 
 
@@ -107,20 +110,3 @@ def get_model_error_message():
     if _load_error is None:
         return None
     return str(_load_error)
-
-
-def start_model_warmup():
-    global _warmup_started
-
-    if _warmup_started or _interpreter is not None:
-        return
-
-    _warmup_started = True
-
-    def _warm():
-        try:
-            _load_model_once()
-        except Exception:
-            pass
-
-    threading.Thread(target=_warm, daemon=True, name="model-warmup").start()
