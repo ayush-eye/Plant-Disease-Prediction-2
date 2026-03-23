@@ -17,22 +17,25 @@ def health():
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    model_status = get_model_status()
-    if model_status != "ready":
-        return jsonify(
-            {
-                "error": "Model is still loading. Retry shortly.",
-                "model_status": model_status,
-            }
-        ), 503
-
     if "image" not in request.files:
         return jsonify({"error": "No image provided"}), 400
 
     file = request.files["image"]
     image = Image.open(io.BytesIO(file.read())).convert("RGB")
 
-    result = predict_image(image)
+    try:
+        result = predict_image(image)
+    except Exception:
+        return (
+            jsonify(
+                {
+                    "error": "Model failed to load",
+                    "model_status": get_model_status(),
+                }
+            ),
+            500,
+        )
+
     return jsonify(result)
 
 
