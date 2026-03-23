@@ -1,9 +1,11 @@
 from pathlib import Path
 import threading
 
-MODEL_PATH = Path(__file__).with_name("my_model4.h5")
+MODEL_PATH = Path(__file__).with_name("my_model4.tflite")
 
-_model = None
+_interpreter = None
+_input_details = None
+_output_details = None
 _load_error = None
 _load_lock = threading.Lock()
 _warmup_started = False
@@ -51,25 +53,33 @@ CLASS_MAPPING = {
 
 
 def _load_model_once():
-    global _model, _load_error
+    global _interpreter, _input_details, _output_details, _load_error
 
-    if _model is not None:
-        return _model
+    if _interpreter is not None:
+        return _interpreter, _input_details, _output_details
 
     if _load_error is not None:
         raise _load_error
 
     with _load_lock:
-        if _model is not None:
-            return _model
+        if _interpreter is not None:
+            return _interpreter, _input_details, _output_details
         if _load_error is not None:
             raise _load_error
 
         try:
-            from tensorflow.keras.models import load_model
+            try:
+                from tflite_runtime.interpreter import Interpreter
+            except ImportError:
+                import tensorflow as tf
 
-            _model = load_model(MODEL_PATH)
-            return _model
+                Interpreter = tf.lite.Interpreter
+
+            _interpreter = Interpreter(model_path=str(MODEL_PATH))
+            _interpreter.allocate_tensors()
+            _input_details = _interpreter.get_input_details()[0]
+            _output_details = _interpreter.get_output_details()[0]
+            return _interpreter, _input_details, _output_details
         except Exception as exc:
             _load_error = exc
             raise
@@ -80,11 +90,11 @@ def get_model():
 
 
 def is_model_ready():
-    return _model is not None
+    return _interpreter is not None
 
 
 def get_model_status():
-    if _model is not None:
+    if _interpreter is not None:
         return "ready"
     if _load_error is not None:
         return "error"
@@ -96,7 +106,7 @@ def get_model_status():
 def start_model_warmup():
     global _warmup_started
 
-    if _warmup_started or _model is not None:
+    if _warmup_started or _interpreter is not None:
         return
 
     _warmup_started = True
