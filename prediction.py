@@ -1,13 +1,13 @@
 import numpy as np
-from tensorflow.keras.preprocessing import image
-from model import model, CLASS_MAPPING
+from model import CLASS_MAPPING, get_model
 
 def predict_image(img):
     img = img.resize((224, 224))
-    img_array = image.img_to_array(img)
+    img_array = np.asarray(img, dtype=np.float32)
     img_array = np.expand_dims(img_array, axis=0)
 
-    prediction = model.predict(img_array)
+    model = get_model()
+    prediction = model.predict(img_array, verbose=0)
     class_index = np.argmax(prediction, axis=1)[0]
     confidence = float(np.max(prediction))
 

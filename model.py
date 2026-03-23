@@ -1,8 +1,12 @@
-from tensorflow.keras.models import load_model
+from pathlib import Path
+import threading
 
-MODEL_PATH = "my_model4.h5"
+MODEL_PATH = Path(__file__).with_name("my_model4.h5")
 
-model = load_model(MODEL_PATH)
+_model = None
+_load_error = None
+_load_lock = threading.Lock()
+_warmup_started = False
 
 CLASS_MAPPING = {
     0: "Apple scab",
@@ -44,3 +48,63 @@ CLASS_MAPPING = {
     36: "Tomato Tomato mosaic virus",
     37: "Tomato healthy"
 }
+
+
+def _load_model_once():
+    global _model, _load_error
+
+    if _model is not None:
+        return _model
+
+    if _load_error is not None:
+        raise _load_error
+
+    with _load_lock:
+        if _model is not None:
+            return _model
+        if _load_error is not None:
+            raise _load_error
+
+        try:
+            from tensorflow.keras.models import load_model
+
+            _model = load_model(MODEL_PATH)
+            return _model
+        except Exception as exc:
+            _load_error = exc
+            raise
+
+
+def get_model():
+    return _load_model_once()
+
+
+def is_model_ready():
+    return _model is not None
+
+
+def get_model_status():
+    if _model is not None:
+        return "ready"
+    if _load_error is not None:
+        return "error"
+    if _warmup_started:
+        return "loading"
+    return "idle"
+
+
+def start_model_warmup():
+    global _warmup_started
+
+    if _warmup_started or _model is not None:
+        return
+
+    _warmup_started = True
+
+    def _warm():
+        try:
+            _load_model_once()
+        except Exception:
+            pass
+
+    threading.Thread(target=_warm, daemon=True, name="model-warmup").start()
